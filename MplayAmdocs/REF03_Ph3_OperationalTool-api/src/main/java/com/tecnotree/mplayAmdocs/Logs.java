@@ -42,7 +42,7 @@ public class Logs {
 	private static String log_outputDirectory = "";
 	private static Tn3Logger logger = null;
 	private static String ipServerElasticSearch = "", ipServerElasticSearchParam = "", schemaElasticSearch  = "", indexElasticSearch = "", dateFrom = "", dateTo = "", ipWfi = "";
-	private static int portServerElasticSearch = 0, sizeHitsElasticSearch = 0, responseCodeQuery = 500, threadPool = 1;
+	private static int portServerElasticSearch = 0, sizeHitsElasticSearch = 0, responseCodeQuery = 200, threadPool = 1;
 	private static RestHighLevelClient client = null;
 	private static Tn3ElasticSearch tn3ElasticSearch = null;
 	private static String pattern1 = "^(\\d{4})(\\/|-)(0[1-9]|1[0-2])\\2([0-2][0-9]|3[0-1])(T)(0[0-9]|1[0-9]|2[0-3])(:)([0-5][0-9])(:)([0-5][0-9])$";
@@ -190,7 +190,7 @@ public class Logs {
 		SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
 		BoolQueryBuilder qb = QueryBuilders.boolQuery();
 		qb
-		 .must(QueryBuilders.matchQuery("ResponseJSON.code",responseCodeQuery))//EQUAL
+		 .mustNot(QueryBuilders.matchQuery("ResponseJSON.code",responseCodeQuery))//EQUAL
 		 .must(QueryBuilders.rangeQuery("@timestamp").from(dateFrom).to(dateTo));//BETWEEN
 		
 		searchSourceBuilder.query(qb);
@@ -204,8 +204,8 @@ public class Logs {
     	searchRequest.indices(tn3ElasticSearch.getIndex());
     	searchRequest.source(searchSourceBuilder.size(sizeHitsElasticSearch));
     	
-		SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
-		
+    	SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
+				
 		if (searchResponse.getHits().getTotalHits() > 0) {
 			
 			//SETEO POOL DE HILOS
