@@ -22,44 +22,12 @@ public class CallWorkFlowInitiator implements Callable<String> {
 		this.ipWfi = ipWfi;
 	}
 	
-	
-	/*@Override
-	public void run() {
-		// TODO Auto-generated method stub
-		
-		System.out.println("El hilo " + hiloId + " coge el pool " + Thread.currentThread().getName());
-		
-		try {
-			
-			Thread.sleep(1000);
-			String result = sendPOST(ipWfi+"/DAP/workflow/async/Provisioning_MQ_AMAZON_MPLAY",payload);
-            System.out.println("Resultado del BMPN -->" + result);
-			
-		}catch (InterruptedException e) {
-			System.out.println(e.getMessage());
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			System.out.println(e.getMessage());
-		}
-		
-		System.out.println("El hilo " + hiloId + " deja el pool " + Thread.currentThread().getName());
-		
-	}*/
-	
 	public String call() throws IOException { 
 		String result = "";
 		
 		System.out.println("El hilo " + hiloId + " coge el pool " + Thread.currentThread().getName());
 		
-		
-		try { 
-			// sleep for 1 seconds 
-			Thread.sleep(1 * 1000); 
-			result = sendPOST(ipWfi+"/DAP/workflow/async/Provisioning_MQ_AMAZON_MPLAY",payload);
-			
-			} catch(final InterruptedException ex) { 
-					ex.printStackTrace(); 
-			} 
+		result = sendPOST(ipWfi+"/DAP/workflow/async/Provisioning_MQ_AMAZON_MPLAY",payload); 
 		
 		System.out.println("El hilo " + hiloId + " deja el pool " + Thread.currentThread().getName());
 		

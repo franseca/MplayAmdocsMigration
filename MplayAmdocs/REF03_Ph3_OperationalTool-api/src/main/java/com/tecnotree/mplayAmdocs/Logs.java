@@ -5,9 +5,7 @@ import java.io.InputStream;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -28,7 +26,6 @@ import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.FieldSortBuilder;
 import org.elasticsearch.search.sort.SortOrder;
 
-import com.tecnotree.mplayAmdocs.json.JsonProvisioning_MQ_AMAZON_MPLAY;
 import com.tecnotree.tools.Tn3ElasticSearch;
 import com.tecnotree.tools.Tn3Logger;
 
@@ -41,8 +38,8 @@ public class Logs {
 	private static DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 	private static String log_outputDirectory = "";
 	private static Tn3Logger logger = null;
-	private static String ipServerElasticSearch = "", ipServerElasticSearchParam = "", schemaElasticSearch  = "", indexElasticSearch = "", dateFrom = "", dateTo = "", ipWfi = "";
-	private static int portServerElasticSearch = 0, sizeHitsElasticSearch = 0, responseCodeQuery = 200, threadPool = 1;
+	private static String ipServerElasticSearch = "", ipServerElasticSearchParam = "", schemaElasticSearch  = "", indexElasticSearch = "", dateFrom = "", dateTo = "", ipWfi = "", threadsNumberString = "";
+	private static int portServerElasticSearch = 0, sizeHitsElasticSearch = 0, responseCodeQuery = 200, threadPool = 1, threadsNumber = 0;
 	private static RestHighLevelClient client = null;
 	private static Tn3ElasticSearch tn3ElasticSearch = null;
 	private static String pattern1 = "^(\\d{4})(\\/|-)(0[1-9]|1[0-2])\\2([0-2][0-9]|3[0-1])(T)(0[0-9]|1[0-9]|2[0-3])(:)([0-5][0-9])(:)([0-5][0-9])$";
@@ -57,8 +54,9 @@ public class Logs {
     		//IP DEL SERVIDOR ELASTICSEARCH
     		dateFrom = args[0];
     		dateTo = args[1];
-    		ipServerElasticSearchParam = args[2];
-    		ipWfi = args[3];
+    		threadsNumberString = args[2];
+    		ipServerElasticSearchParam = args[3];
+    		ipWfi = args[4];
     		
     		//VALIDO QUE LA FECHA DESDE SEA DEL FORMATO CORRECTO
 	  		if(!Pattern.matches(pattern1, dateFrom)) {
@@ -96,8 +94,7 @@ public class Logs {
   		  		return;
 			}
 		  	
-	  		
-    		try {
+  			try {
     			//CARGO EL ARCHIVO DE PROPIEDADES
     			loadProperties(PROP_FILE_NAME);
 		  		
@@ -107,6 +104,33 @@ public class Logs {
     			System.exit(0);
     		}
 			
+  			//VALIDO EL NUMERO DE HILOS
+  			if(!threadsNumberString.equals("")) {//SI EL USUARIO INGRESO UN NUMERO
+  				try {
+  					threadsNumber = Integer.parseInt(threadsNumberString);
+  				}catch (NumberFormatException e) {
+  	    			System.out.println(dateFormat.format(new Date()) + " - The number of threads (param 3) isn't a number: " + e.getMessage());
+  	    			System.out.println(dateFormat.format(new Date()) + " - Finished Logs process.");
+  	    			System.exit(0);
+  	    		}
+  				
+				if(threadsNumber < 1) {//SI ES MENOR A 1
+					System.out.println(dateFormat.format(new Date()) + " - The number of threads must be great than 1.");
+	    			System.out.println(dateFormat.format(new Date()) + " - Finished Logs process.");
+	    			System.exit(0);
+				}
+				
+				if(threadsNumber > 100) {//SI ES MAYOR A 100
+					System.out.println(dateFormat.format(new Date()) + " - The number of threads must be less than 100. More than 100 threads isn't recommended.");
+	    			System.out.println(dateFormat.format(new Date()) + " - Finished Logs process.");
+	    			System.exit(0);
+				}
+				
+			}else {
+				threadsNumber = threadPool;//SET DEFAULT = 1
+			}
+  			
+  			
     		try {
 	  				
     			//CREO EL DIRECTORIO Y EL ARCHIVO DE LOGS
@@ -116,6 +140,10 @@ public class Logs {
     			System.out.println(dateFormat.format(new Date()) + " - Command executed: Logs dateFrom:"+ args[0] + " dateTo:" + args[1]);
 		  						  		
     			logger.info("Properties file load.");
+    			
+    			System.out.println(dateFormat.format(new Date()) + " - Number of threads: " + threadsNumber);
+    			logger.info("Number of threads: " + threadsNumber);
+    			
     			System.out.println(dateFormat.format(new Date()) + " - Starting Logs process...");
     			logger.info("Starting Logs process...");
     			
@@ -191,7 +219,8 @@ public class Logs {
 		BoolQueryBuilder qb = QueryBuilders.boolQuery();
 		qb
 		 .mustNot(QueryBuilders.matchQuery("ResponseJSON.code",responseCodeQuery))//EQUAL
-		 .must(QueryBuilders.rangeQuery("@timestamp").from(dateFrom).to(dateTo));//BETWEEN
+		 .must(QueryBuilders.rangeQuery("@timestamp").from(dateFrom).to(dateTo))//BETWEEN
+		 .must(QueryBuilders.existsQuery("requestJsonMqBulkData"));//FIELD EXIST
 		
 		searchSourceBuilder.query(qb);
 		searchSourceBuilder.sort(new FieldSortBuilder("@timestamp").order(SortOrder.ASC));//ORDER BY
@@ -209,16 +238,20 @@ public class Logs {
 		if (searchResponse.getHits().getTotalHits() > 0) {
 			
 			//SETEO POOL DE HILOS
-	    	ExecutorService executorService = Executors.newFixedThreadPool(threadPool);
+	    	//ExecutorService executorService = Executors.newFixedThreadPool(threadPool);
+			ExecutorService executorService = Executors.newFixedThreadPool(threadsNumber);
 			
-		    System.out.println("getTotalHits(): " + searchResponse.getHits().getTotalHits());
-		   
+		    System.out.println(dateFormat.format(new Date()) + " - Total records found:" + searchResponse.getHits().getTotalHits());
+			logger.info("Total records found:" + searchResponse.getHits().getTotalHits());
+			
 			SearchHits hits = searchResponse.getHits();
 			SearchHit hit[] = hits.getHits();
 			
 			//System.out.println("hit.length: " +  hit.length);
-			
+			int countRecordsProcess = 0;
 			for (int i = 0; i < hit.length; i++) {
+				
+				countRecordsProcess++;
 				
 				System.out.println("======================== Record No. " + (i+1) + " ======================== ");
 				logger.info("======================== Record No. " + (i+1) + " ========================= ");
@@ -235,23 +268,30 @@ public class Logs {
 				//OBTENGO PAYLOAD PARA ENVIAR AL WORKFLOWINITIATOR
 				String payload = tn3ElasticSearch.getDataRequestJsonMqBulkData(hit[i]);
 				
-				System.out.println("Payload sent: " + payload);
-				logger.info("Payload sent: " + payload);
-								
-				//ENVIO AL WORKFLOWINITIATOR EL PAYLOAD OBTENIDO DEL LOG EN ELASTICSEARCH
-				FutureTask<String> task = (FutureTask<String>) executorService.submit (new CallWorkFlowInitiator(i, payload, ipWfi));
-				String response = (String) task.get();
+				if(payload != null) {
+					System.out.println("Payload sent: " + payload);
+					logger.info("Payload sent: " + payload);
+									
+					//ENVIO AL WORKFLOWINITIATOR EL PAYLOAD OBTENIDO DEL LOG EN ELASTICSEARCH
+					FutureTask<String> task = (FutureTask<String>) executorService.submit (new CallWorkFlowInitiator(i, payload, ipWfi));
+					String response = (String) task.get();
+					
+					System.out.println("Response: " + response);
+					logger.info("Response: " + response);
+					
+				}else {
+					
+					System.out.println("Didn't find payload");
+					logger.info("Didn't find payload");
+				}
 				
-				System.out.println("Response: " + response);
-				logger.info("Response: " + response);
-				
-				System.out.println("===============================================================");
-				logger.info("===============================================================");
+				//System.out.println("===============================================================");
+				//logger.info("===============================================================");
 				
 			}//FIN DE for (int i = 0; i < hit.length; i++) {
 			
-			System.out.println(dateFormat.format(new Date()) + " - Total records found:" + searchResponse.getHits().getTotalHits());
-			logger.info("Total records found:" + searchResponse.getHits().getTotalHits());
+			System.out.println(dateFormat.format(new Date()) + " - Total records processed:" + countRecordsProcess);
+			logger.info("Total records processed:" + countRecordsProcess);
 			
 			executorService.shutdown ();
 			
@@ -272,64 +312,6 @@ public class Logs {
 		}//FIN DE if (searchResponse.getHits().getTotalHits() > 0) {
 			
     }	
-        
-    public static void callWorkFlowIniator() throws IOException, InterruptedException {
-    	/* SE NECESITA JAVA 11
-    	 HttpClient httpClient = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_2)
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
-    	
-    	// form parameters
-    	String json = new StringBuilder()
-                .append("{")
-                .append("\"name\":\"mkyong\",")
-                .append("\"notes\":\"hello\"")
-                .append("}").toString();
-
-    	HttpRequest request = HttpRequest.newBuilder()
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .uri(URI.create("https://httpbin.org/post"))
-                .setHeader("User-Agent", "Java 11 HttpClient Bot") // add request header
-                .header("Content-Type", "application/json")
-                .build();
-
-    	HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        // print status code
-        System.out.println(response.statusCode());
-
-        // print response body
-        System.out.println("response.body()->" + response.body());*/
-    	List<String[]> allElements = new ArrayList<String[]>();
-    	//allElements = getLogsProvisioning_MQ_AMAZON_MPLAY();
-    	
-    	///////////////////////////////////////////////
-    	String[] content = new String[]{"","","","CH","DNI","72932870","","","C","2021-06-17T17:40:02","CHSUB","[,9191919191]","49998584","ALDM","Fixed_Voice_Main","[Fixed_Voice_Plan|Fixed_Voice_Plan,TEST_MQ]","WRLN","false","1062666"};
-    	allElements.add(content);
-    	
-    	////////////////////////////////////////////////////////
-    	
-    	if(allElements.size() != 0) {
-    		
-    		for(int i = 0; i < allElements.size(); i++) {
-    			String[] record = (String[])allElements.get(i);
-    			
-	    		JsonProvisioning_MQ_AMAZON_MPLAY jsonP = new JsonProvisioning_MQ_AMAZON_MPLAY();
-	    		System.out.println(jsonP.getPayload(record));
-	        	
-	            //String result = sendPOST(ipWFI+"/DAP/workflow/async/Provisioning_MQ_AMAZON_MPLAY",json);
-	            //System.out.println(result);
-    		}
-           
-    	}else {
-    	
-    		System.out.println(dateFormat.format(new Date()) + " - No results matching the criteria.");
-			logger.info("No results matching the criteria.");
-    	}
-
-    }
-    
-    
+   
     	 
 }
